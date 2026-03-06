@@ -77,8 +77,15 @@ def get_token():
     url = f"{BASE_URL}/auth/tokens"
     payload = {"grant_type": "password", "username": CM_USER, "password": CM_PASS}
     resp = requests.post(url, json=payload, verify=SSL_VERIFY, timeout=15)
+    log.info(f"Auth response status: {resp.status_code}")
     resp.raise_for_status()
-    return resp.json()["jwt"]
+    data = resp.json()
+    log.info(f"Auth response keys: {list(data.keys())}")
+    # CM may return 'jwt' or 'access_token'
+    token = data.get("jwt") or data.get("access_token")
+    if not token:
+        raise ValueError(f"No token found in auth response: {data}")
+    return token
 
 
 def get_all_keys(token):
@@ -97,11 +104,14 @@ def get_all_keys(token):
         resp = requests.get(
             url, headers=headers, params=params, verify=SSL_VERIFY, timeout=30
         )
+        log.info(f"Keys API response status: {resp.status_code}")
         resp.raise_for_status()
         data = resp.json()
-        batch = data.get("resources", [])
+        log.info(f"Keys API response keys: {list(data.keys())}")
+        batch = data.get("resources") or data.get("items") or []
         keys.extend(batch)
         total = data.get("total", 0)
+        log.info(f"Fetched {len(batch)} keys (total={total}, skip={skip})")
         skip += limit
         if skip >= total or not batch:
             break
