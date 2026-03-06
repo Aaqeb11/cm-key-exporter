@@ -110,6 +110,10 @@ def get_all_keys(token):
         data = resp.json()
         log.info(f"Keys API response keys: {list(data.keys())}")
         batch = data.get("resources") or data.get("items") or []
+        if batch:
+            log.info(f"Sample key fields: {list(batch[0].keys())}")
+            log.info(f"Sample key data: {batch[0]}")
+        keys.extend(batch)
         keys.extend(batch)
         total = data.get("total", 0)
         log.info(f"Fetched {len(batch)} keys (total={total}, skip={skip})")
