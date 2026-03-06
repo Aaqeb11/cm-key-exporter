@@ -17,6 +17,7 @@ from prometheus_client import (
     PROCESS_COLLECTOR,
     REGISTRY,
     Gauge,
+    Info,
     start_http_server,
 )
 
@@ -95,6 +96,29 @@ cm_keys_scrape_duration_seconds = Gauge(
     "cm_keys_scrape_duration_seconds", "Duration of the last CM key scrape in seconds"
 )
 
+# Per-key inventory — one gauge per key, all metadata as labels, value=1
+cm_key_info = Gauge(
+    "cm_key_info",
+    "Per-key inventory with metadata as labels",
+    [
+        "name",
+        "uuid",
+        "state",
+        "algorithm",
+        "size",
+        "object_type",
+        "usage",
+        "domain",
+        "version",
+        "created_at",
+        "activation_date",
+        "deactivation_date",
+        "unexportable",
+        "undeletable",
+        "never_exportable",
+    ],
+)
+
 
 # ── CM API helpers ────────────────────────────────────────────────────────────
 
@@ -137,6 +161,16 @@ def get_all_keys(token):
     return keys
 
 
+def fmt_date(val):
+    """Trim datetime to date-only string for cleaner labels."""
+    if not val:
+        return ""
+    try:
+        return val[:10]  # "2026-02-17T..." → "2026-02-17"
+    except Exception:
+        return str(val)
+
+
 # ── Metric collection ─────────────────────────────────────────────────────────
 
 
@@ -145,10 +179,12 @@ def collect_metrics():
     try:
         keys = get_all_keys(get_token())
 
+        # Clear all gauge label sets
         cm_keys_total.clear()
         cm_keys_by_object_type.clear()
         cm_keys_by_size.clear()
         cm_keys_by_usage.clear()
+        cm_key_info.clear()
 
         now = datetime.now(timezone.utc)
         state_algo_domain = {}
@@ -169,7 +205,19 @@ def collect_metrics():
             size = str(key.get("size", "Unknown"))
             usage = key.get("usage", "Unknown")
             version = key.get("version", 0) or 0
+            name = key.get("name", "")
+            uuid = key.get("uuid", "")
+            created_at = fmt_date(key.get("createdAt"))
+            act_date = fmt_date(key.get("activationDate"))
+            deact_date = fmt_date(
+                key.get("deactivationDate") or key.get("deactivation_date")
+            )
 
+            is_unexportable = str(bool(key.get("unexportable"))).lower()
+            is_undeletable = str(bool(key.get("undeletable"))).lower()
+            is_never_exportable = str(bool(key.get("neverExportable"))).lower()
+
+            # ── Aggregates ──
             state_algo_domain[(state, algorithm, domain)] = (
                 state_algo_domain.get((state, algorithm, domain), 0) + 1
             )
@@ -192,27 +240,24 @@ def collect_metrics():
                 rotated += 1
             total_versions += version
 
-            if state == "Active":
-                deact = key.get("deactivationDate") or key.get("deactivation_date")
-                if deact:
-                    try:
-                        delta = (
-                            datetime.fromisoformat(deact.replace("Z", "+00:00")) - now
-                        ).days
-                        if 0 <= delta <= 30:
-                            expiring_30 += 1
-                        if 0 <= delta <= 60:
-                            expiring_60 += 1
-                        if 0 <= delta <= 90:
-                            expiring_90 += 1
-                    except Exception:
-                        pass
+            if state == "Active" and deact_date:
+                try:
+                    delta = (
+                        datetime.fromisoformat(deact_date + "T00:00:00+00:00") - now
+                    ).days
+                    if 0 <= delta <= 30:
+                        expiring_30 += 1
+                    if 0 <= delta <= 60:
+                        expiring_60 += 1
+                    if 0 <= delta <= 90:
+                        expiring_90 += 1
+                except Exception:
+                    pass
 
-            created = key.get("createdAt")
-            if created:
+            if created_at:
                 try:
                     age = (
-                        now - datetime.fromisoformat(created.replace("Z", "+00:00"))
+                        now - datetime.fromisoformat(created_at + "T00:00:00+00:00")
                     ).days
                     if age > 90:
                         older_90 += 1
@@ -223,6 +268,26 @@ def collect_metrics():
                 except Exception:
                     pass
 
+            # ── Per-key inventory gauge ──
+            cm_key_info.labels(
+                name=name,
+                uuid=uuid,
+                state=state,
+                algorithm=algorithm,
+                size=size,
+                object_type=obj_type,
+                usage=usage,
+                domain=domain,
+                version=str(version),
+                created_at=created_at,
+                activation_date=act_date,
+                deactivation_date=deact_date,
+                unexportable=is_unexportable,
+                undeletable=is_undeletable,
+                never_exportable=is_never_exportable,
+            ).set(1)
+
+        # ── Write aggregate gauges ────────────────────────────────────────────
         for (state, algorithm, domain), count in state_algo_domain.items():
             cm_keys_total.labels(state=state, algorithm=algorithm, domain=domain).set(
                 count
