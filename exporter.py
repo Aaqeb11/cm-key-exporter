@@ -31,6 +31,7 @@ CM_HOST = os.environ.get("CM_HOST", "")
 CM_USER = os.environ.get("CM_USER", "admin")
 CM_PASS = os.environ.get("CM_PASS", "")
 CM_PORT = os.environ.get("CM_PORT", "443")
+CM_DOMAIN = os.environ.get("CM_DOMAIN", "root")
 SCRAPE_INT = int(os.environ.get("SCRAPE_INTERVAL", "60"))  # seconds
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "9123"))
 SSL_VERIFY = os.environ.get("SSL_VERIFY", "false").lower() != "false"
@@ -100,7 +101,7 @@ def get_all_keys(token):
 
     while True:
         url = f"{BASE_URL}/vault/keys2"
-        params = {"skip": skip, "limit": limit, "usageMask": -1}
+        params = {"skip": skip, "limit": limit, "usageMask": -1, "domain": CM_DOMAIN}
         resp = requests.get(
             url, headers=headers, params=params, verify=SSL_VERIFY, timeout=30
         )
