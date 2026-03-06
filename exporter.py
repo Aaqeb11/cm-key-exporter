@@ -100,7 +100,7 @@ def get_all_keys(token):
 
     while True:
         url = f"{BASE_URL}/vault/keys2"
-        params = {"skip": skip, "limit": limit, "usageMask": -1}
+        params = {"skip": skip, "limit": limit}
         resp = requests.get(
             url, headers=headers, params=params, verify=SSL_VERIFY, timeout=30
         )
@@ -109,6 +109,9 @@ def get_all_keys(token):
         data = resp.json()
         log.info(f"Keys API response keys: {list(data.keys())}")
         batch = data.get("resources") or data.get("items") or []
+        if batch and not keys:
+            log.info(f"Sample key fields: {list(batch[0].keys())}")
+            log.info(f"Sample key: {batch[0]}")
         keys.extend(batch)
         total = data.get("total", 0)
         log.info(f"Fetched {len(batch)} keys (total={total}, skip={skip})")
