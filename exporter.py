@@ -101,7 +101,7 @@ def get_all_keys(token):
 
     while True:
         url = f"{BASE_URL}/vault/keys2"
-        params = {"skip": skip, "limit": limit, "usageMask": -1, "domain": CM_DOMAIN}
+        params = {"skip": skip, "limit": limit, "usageMask": -1, "all": "true"}
         resp = requests.get(
             url, headers=headers, params=params, verify=SSL_VERIFY, timeout=30
         )
