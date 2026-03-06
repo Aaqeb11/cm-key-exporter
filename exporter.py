@@ -31,7 +31,6 @@ CM_HOST = os.environ.get("CM_HOST", "")
 CM_USER = os.environ.get("CM_USER", "admin")
 CM_PASS = os.environ.get("CM_PASS", "")
 CM_PORT = os.environ.get("CM_PORT", "443")
-CM_DOMAIN = os.environ.get("CM_DOMAIN", "root")
 SCRAPE_INT = int(os.environ.get("SCRAPE_INTERVAL", "60"))  # seconds
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "9123"))
 SSL_VERIFY = os.environ.get("SSL_VERIFY", "false").lower() != "false"
@@ -76,7 +75,7 @@ cm_keys_expiring_soon = Gauge(
 def get_token():
     """Authenticate and return a bearer token."""
     url = f"{BASE_URL}/auth/tokens"
-    payload = {"grant_type": "password", "username": CM_USER, "password": CM_PASS}
+    payload = {"name": CM_USER, "password": CM_PASS}
     resp = requests.post(url, json=payload, verify=SSL_VERIFY, timeout=15)
     log.info(f"Auth response status: {resp.status_code}")
     resp.raise_for_status()
@@ -101,7 +100,7 @@ def get_all_keys(token):
 
     while True:
         url = f"{BASE_URL}/vault/keys2"
-        params = {"skip": skip, "limit": limit, "usageMask": -1, "all": "true"}
+        params = {"skip": skip, "limit": limit, "usageMask": -1}
         resp = requests.get(
             url, headers=headers, params=params, verify=SSL_VERIFY, timeout=30
         )
@@ -110,10 +109,6 @@ def get_all_keys(token):
         data = resp.json()
         log.info(f"Keys API response keys: {list(data.keys())}")
         batch = data.get("resources") or data.get("items") or []
-        if batch:
-            log.info(f"Sample key fields: {list(batch[0].keys())}")
-            log.info(f"Sample key data: {batch[0]}")
-        keys.extend(batch)
         keys.extend(batch)
         total = data.get("total", 0)
         log.info(f"Fetched {len(batch)} keys (total={total}, skip={skip})")
